@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,12 +49,23 @@ class ShareActivity : ComponentActivity() {
     private lateinit var discovery: EtherDiscovery
     private lateinit var receiver: EtherReceiver
     private lateinit var sender: EtherSender
+    private var selectedImageUri: Uri? = null
+    private var imageBuffer: ByteArray? = null
+    private var imageMime: String = "image/jpeg"
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions.all { it.value }) {
             initializeEther()
+        }
+    }
+
+    private val imagePickerLauncher = registerForActivityResult(PickVisualMedia()) { uri ->
+        if (uri != null) {
+            selectedImageUri = uri
+            loadImageFromUri(uri)
+            updateUI()
         }
     }
 
@@ -96,38 +108,17 @@ class ShareActivity : ComponentActivity() {
         sender = EtherSender()
 
         // Handle incoming share intent
-        val imageUri = when (intent?.action) {
+        val sharedImageUri = when (intent?.action) {
             Intent.ACTION_SEND -> intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             else -> null
         }
 
-        val imageBuffer = imageUri?.let { uri ->
-            contentResolver.openInputStream(uri)?.use {
-                it.readBytes()
-            }
+        if (sharedImageUri != null) {
+            selectedImageUri = sharedImageUri
+            loadImageFromUri(sharedImageUri)
         }
 
-        val detectedMime = imageUri?.let { contentResolver.getType(it) } ?: detectImageMime(imageBuffer)
-
-        setContent {
-            EtherTheme {
-                if (imageBuffer != null) {
-                    FlickShareScreen(
-                        imageBuffer = imageBuffer,
-                        imageMime = detectedMime,
-                        imageName = imageUri?.lastPathSegment ?: "image",
-                        peers = discovery.peers,
-                        onThrow = { target, motion ->
-                            lifecycleScope.launch {
-                                sender.send(target.host, target.port, imageBuffer, detectedMime, "flicked.jpg", motion)
-                            }
-                        },
-                    )
-                } else {
-                    GalleryScreen(discovery.peers)
-                }
-            }
-        }
+        updateUI()
 
         // Listen for received images
         receiver.onEvent { event ->
@@ -161,6 +152,42 @@ class ShareActivity : ComponentActivity() {
             buffer.size >= 4 && buffer[0] == 0x47.toByte() && buffer[1] == 0x49.toByte() -> "image/gif"
             buffer.size >= 12 && buffer.sliceArray(8..11).contentEquals("WEBP".toByteArray()) -> "image/webp"
             else -> "image/jpeg"
+        }
+    }
+
+    private fun loadImageFromUri(uri: Uri) {
+        try {
+            imageBuffer = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            imageMime = contentResolver.getType(uri) ?: detectImageMime(imageBuffer)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateUI() {
+        setContent {
+            EtherTheme {
+                if (imageBuffer != null) {
+                    FlickShareScreen(
+                        imageBuffer = imageBuffer!!,
+                        imageMime = imageMime,
+                        imageName = selectedImageUri?.lastPathSegment ?: "image",
+                        peers = discovery.peers,
+                        onThrow = { target, motion ->
+                            lifecycleScope.launch {
+                                sender.send(target.host, target.port, imageBuffer!!, imageMime, "flicked.jpg", motion)
+                            }
+                        },
+                    )
+                } else {
+                    GalleryScreen(
+                        peers = discovery.peers,
+                        onPickImage = {
+                            imagePickerLauncher.launch(PickVisualMedia.ImageOnly)
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -366,7 +393,7 @@ fun FlickShareScreen(
 }
 
 @Composable
-fun GalleryScreen(peers: StateFlow<Map<String, Peer>>) {
+fun GalleryScreen(peers: StateFlow<Map<String, Peer>>, onPickImage: () -> Unit) {
     val peersMap by peers.collectAsState()
 
     Column(
@@ -414,8 +441,27 @@ fun GalleryScreen(peers: StateFlow<Map<String, Peer>>) {
             }
         }
 
+        // Pick image button
+        Button(
+            onClick = onPickImage,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0x5B8CFF),
+            ),
+            shape = RoundedCornerShape(8.dp),
+        ) {
+            Text(
+                "📸 Pick Image to Share",
+                modifier = Modifier.padding(8.dp),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+
         Text(
-            "📸 How to use:",
+            "📸 Or use Share Sheet:",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFFFFFF),
@@ -425,7 +471,7 @@ fun GalleryScreen(peers: StateFlow<Map<String, Peer>>) {
         )
 
         Text(
-            "1. Open any photo from your gallery\n2. Tap Share → Ether\n3. Flick the image upward\n4. Watch it drop on another device!",
+            "1. Open Gallery app → pick photo\n2. Tap Share → Ether\n3. Flick image upward to send\n4. Watch it drop on another device!",
             fontSize = 12.sp,
             color = Color(0x8A97B1),
             modifier = Modifier
