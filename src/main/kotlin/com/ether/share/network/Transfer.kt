@@ -80,12 +80,12 @@ class EtherReceiver(val port: Int = 0) {
                         }
 
                         is FrameParser.PayloadEvent -> {
-                            if (settled) return@forEach
+                            if (settled) return
                             buffers.add(event.chunk)
                             if (!caught) {
                                 sniff += event.chunk
                                 if (sniff.size >= 12 || sniff.size >= (header?.payloadLen ?: Long.MAX_VALUE)) {
-                                    val mime = header?.mime ?: return@forEach
+                                    val mime = header?.mime ?: return
                                     if (imageSignatureMatches(sniff, mime)) {
                                         caught = true
                                         header?.let { h ->
