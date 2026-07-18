@@ -1,0 +1,37 @@
+﻿# Gradle
+.gradle/
+gradle/
+gradlew
+gradlew.bat
+gradle-*.zip
+gradle-*.tar.gz
+build/
+*.apk
+
+# Build artifacts
+app/build/
+**/build/
+*.jar
+*.aar
+
+# IDE
+.idea/
+*.iml
+*.iws
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+*.log
+Thumbs.db
+
+# Local properties
+local.properties
+gradle.properties
+
+# Temporary files
+*.tmp
+*.temp
+*~

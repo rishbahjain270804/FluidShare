@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ether</string>
+    <string name="flick_up_hint">flick up ↑ to send</string>
+    <string name="no_devices">No nearby devices found</string>
+    <string name="open_photo">Open a photo to share</string>
+    <string name="sending">Sending…</string>
+    <string name="sent">Sent to %s</string>
+    <string name="caught">Image caught from %s</string>
+    <string name="send_failed">Send failed</string>
+</resources>
