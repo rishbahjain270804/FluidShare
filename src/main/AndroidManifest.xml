@@ -25,6 +25,12 @@
             android:name=".ui.ShareActivity"
             android:exported="true"
             android:launchMode="singleTop">
+            <!-- Launch from app drawer -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Share intent from other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
