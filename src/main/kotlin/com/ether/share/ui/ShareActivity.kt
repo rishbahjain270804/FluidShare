@@ -12,7 +12,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,12 +60,18 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
-    private val imagePickerLauncher = registerForActivityResult(PickVisualMedia()) { uri ->
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
         if (uri != null) {
             selectedImageUri = uri
             loadImageFromUri(uri)
             updateUI()
         }
+    }
+
+    private fun pickImage() {
+        imagePickerLauncher.launch("image/*")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,18 +131,22 @@ class ShareActivity : ComponentActivity() {
                 is EtherReceiver.Catch -> {
                     runOnUiThread {
                         Toast.makeText(this, "📨 Image caught!", Toast.LENGTH_SHORT).show()
+                        android.util.Log.d("Ether", "Image caught from ${event.info.name}")
                     }
                 }
 
                 is EtherReceiver.Complete -> {
                     runOnUiThread {
+                        Toast.makeText(this, "✅ Image received!", Toast.LENGTH_SHORT).show()
+                        android.util.Log.d("Ether", "Image transfer complete: ${event.info.name}")
                         saveImageToMediaStore(event.info.buffer, event.info.name)
                     }
                 }
 
                 is EtherReceiver.Reject -> {
                     runOnUiThread {
-                        Toast.makeText(this, "❌ Transfer rejected: ${event.reason}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "❌ ${event.reason}", Toast.LENGTH_LONG).show()
+                        android.util.Log.e("Ether", "Transfer rejected: ${event.reason}")
                     }
                 }
             }
@@ -174,17 +183,28 @@ class ShareActivity : ComponentActivity() {
                         imageName = selectedImageUri?.lastPathSegment ?: "image",
                         peers = discovery.peers,
                         onThrow = { target, motion ->
+                            android.util.Log.d("Ether", "Throwing image to ${target.instance} at ${target.host}:${target.port}")
                             lifecycleScope.launch {
-                                sender.send(target.host, target.port, imageBuffer!!, imageMime, "flicked.jpg", motion)
+                                try {
+                                    val result = sender.send(target.host, target.port, imageBuffer!!, imageMime, "flicked.jpg", motion)
+                                    if (result.isSuccess) {
+                                        android.util.Log.d("Ether", "Send succeeded: ${result.getOrNull()} bytes")
+                                        Toast.makeText(this@ShareActivity, "📤 Sent!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        android.util.Log.e("Ether", "Send failed: ${result.exceptionOrNull()}")
+                                        Toast.makeText(this@ShareActivity, "❌ Send failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("Ether", "Send exception", e)
+                                    Toast.makeText(this@ShareActivity, "❌ Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
                     )
                 } else {
                     GalleryScreen(
                         peers = discovery.peers,
-                        onPickImage = {
-                            imagePickerLauncher.launch(PickVisualMedia.ImageOnly)
-                        }
+                        onPickImage = { pickImage() }
                     )
                 }
             }
@@ -251,6 +271,7 @@ fun FlickShareScreen(
     var isDragging by remember { mutableStateOf(false) }
     var isFlinging by remember { mutableStateOf(false) }
     var selectedPeer by remember { mutableStateOf<Peer?>(null) }
+    var transferStatus by remember { mutableStateOf<String?>(null) }
     val samples = remember { mutableListOf<PointerSample>() }
 
     Column(
@@ -326,8 +347,8 @@ fun FlickShareScreen(
                     modifier = Modifier
                         .size(280.dp)
                         .scale(scale)
-                        .offset(x = (offsetX / 50).dp, y = (offsetY / 50).dp),
-                    contentScale = ContentScale.Crop,
+                        .offset(x = (offsetX / 15).dp, y = (offsetY / 15).dp),
+                    contentScale = ContentScale.Fit,
                 )
             }
 
