@@ -1,46 +1,94 @@
 package com.ether.share.ui
 
+import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ether.share.network.*
 import com.ether.share.protocol.MotionVector
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 class ShareActivity : ComponentActivity() {
     private lateinit var discovery: EtherDiscovery
     private lateinit var receiver: EtherReceiver
     private lateinit var sender: EtherSender
 
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.all { it.value }) {
+            initializeEther()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestPermissionsIfNeeded()
+    }
 
+    private fun requestPermissionsIfNeeded() {
+        val permissions = mutableListOf(
+            android.Manifest.permission.INTERNET,
+            android.Manifest.permission.ACCESS_NETWORK_STATE,
+            android.Manifest.permission.ACCESS_WIFI_STATE,
+            android.Manifest.permission.CHANGE_WIFI_MULTICAST_STATE,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+        } else {
+            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+        val missingPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            permissionLauncher.launch(missingPermissions.toTypedArray())
+        } else {
+            initializeEther()
+        }
+    }
+
+    private fun initializeEther() {
         // Initialize Ether components
-        val instance = "${android.os.Build.MODEL}-${System.currentTimeMillis() % 10000}"
+        val instance = "${Build.MODEL}-${System.currentTimeMillis() % 10000}"
         receiver = EtherReceiver()
         receiver.start()
         discovery = EtherDiscovery(this, instance, receiver.actualPort)
@@ -83,22 +131,20 @@ class ShareActivity : ComponentActivity() {
         receiver.onEvent { event ->
             when (event) {
                 is EtherReceiver.Catch -> {
-                    // Handle catch animation trigger (will move image to UI thread)
                     runOnUiThread {
-                        // Toast or notification
+                        Toast.makeText(this, "📨 Image caught!", Toast.LENGTH_SHORT).show()
                     }
                 }
 
                 is EtherReceiver.Complete -> {
                     runOnUiThread {
-                        // Save to media store (using MediaStore API)
                         saveImageToMediaStore(event.info.buffer, event.info.name)
                     }
                 }
 
                 is EtherReceiver.Reject -> {
                     runOnUiThread {
-                        // Show error
+                        Toast.makeText(this, "❌ Transfer rejected: ${event.reason}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -106,13 +152,35 @@ class ShareActivity : ComponentActivity() {
     }
 
     private fun saveImageToMediaStore(buffer: ByteArray, name: String) {
-        // TODO: Use MediaStore API to save the image to Pictures directory
+        try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val filename = "Ether_$timestamp.jpg"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Ether")
+                }
+            }
+
+            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            uri?.let {
+                contentResolver.openOutputStream(it)?.use { out ->
+                    out.write(buffer)
+                    out.flush()
+                }
+            }
+
+            Toast.makeText(this, "Image saved to Pictures/Ether", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to save image", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         receiver.close()
-        discovery.stop()
     }
 }
 
@@ -141,76 +209,200 @@ fun FlickShareScreen(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var isFlinging by remember { mutableStateOf(false) }
     val samples = remember { mutableListOf<PointerSample>() }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x0B0E14))
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = {
-                        isDragging = true
-                        samples.clear()
-                        offsetX = 0f
-                        offsetY = 0f
-                    },
-                    onDrag = { change, dragAmount ->
-                        samples.add(PointerSample(change.position.x, change.position.y, System.currentTimeMillis()))
-                        offsetX += dragAmount.x
-                        offsetY += dragAmount.y
-
-                        // Check if thrown (crossed top edge with velocity)
-                        if (offsetY < -100) {
-                            val motion = estimateVelocity(samples)
-                            if (motion.velocity > 1.2f) {
-                                onThrow(peersMap.values.first(), motion)
-                                isDragging = false
-                            }
-                        }
-                    },
-                    onDragEnd = {
-                        isDragging = false
-                    },
-                )
-            },
-        contentAlignment = Alignment.Center,
+            .background(Color(0x0B0E14)),
     ) {
-        // Display image with drag transform
-        val bitmap = BitmapFactory.decodeByteArray(imageBuffer, 0, imageBuffer.size)
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = imageName,
-                modifier = Modifier
-                    .size(300.dp)
-                    .offset(x = (offsetX / 40).dp, y = (offsetY / 40).dp),
-                contentScale = ContentScale.Crop,
-            )
+        // Header
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            color = Color.Transparent,
+        ) {
+            Column {
+                Text(
+                    "🎯 Flick to Share",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFFF),
+                )
+                Text(
+                    if (peersMap.isEmpty()) "🔍 Finding devices..." else "✓ ${peersMap.size} device${if (peersMap.size != 1) "s" else ""} nearby",
+                    fontSize = 12.sp,
+                    color = Color(0x8A97B1),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
 
-        if (peersMap.isEmpty()) {
-            Text(
-                "No nearby devices found",
-                color = Color(0x8A97B1),
-                modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp),
-            )
+        // Main content
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            isFlinging = false
+                            samples.clear()
+                            offsetX = 0f
+                            offsetY = 0f
+                        },
+                        onDrag = { change, dragAmount ->
+                            samples.add(PointerSample(change.position.x, change.position.y, System.currentTimeMillis()))
+                            offsetX += dragAmount.x
+                            offsetY += dragAmount.y
+
+                            if (offsetY < -150 && peersMap.isNotEmpty()) {
+                                val motion = estimateVelocity(samples)
+                                if (motion.velocity > 1.5f) {
+                                    isFlinging = true
+                                    onThrow(peersMap.values.first(), motion)
+                                    isDragging = false
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            isDragging = false
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            val bitmap = BitmapFactory.decodeByteArray(imageBuffer, 0, imageBuffer.size)
+            if (bitmap != null) {
+                val scale = if (isDragging) 0.95f else if (isFlinging) 0.8f else 1f
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = imageName,
+                    modifier = Modifier
+                        .size(280.dp)
+                        .scale(scale)
+                        .offset(x = (offsetX / 50).dp, y = (offsetY / 50).dp),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+
+            if (peersMap.isEmpty()) {
+                Text(
+                    "🔍 Searching for devices...",
+                    color = Color(0x8A97B1),
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                )
+            } else if (isDragging && offsetY < -100) {
+                Text(
+                    "⬆️ Keep pulling to send!",
+                    color = Color(0x5B8CFF),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        // Peer list
+        if (peersMap.isNotEmpty()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0x1F2937),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "📱 Nearby Devices",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0x8A97B1),
+                    )
+                    peersMap.forEach { (_, peer) ->
+                        Text(
+                            peer.instance,
+                            fontSize = 14.sp,
+                            color = Color(0xFFFFFF),
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 fun GalleryScreen(peers: StateFlow<Map<String, Peer>>) {
-    Box(
+    val peersMap by peers.collectAsState()
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x0B0E14)),
-        contentAlignment = Alignment.Center,
+            .background(Color(0x0B0E14))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            "Open a photo to share",
+            "🎨 Ether",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0x5B8CFF),
+        )
+
+        Text(
+            "Fluid image sharing",
+            fontSize = 14.sp,
             color = Color(0x8A97B1),
-            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0x1F2937),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "📱 Status",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0x8A97B1),
+                )
+                Text(
+                    if (peersMap.isEmpty()) "🔍 Looking for nearby devices..." else "✓ ${peersMap.size} device${if (peersMap.size != 1) "s" else ""} found!",
+                    fontSize = 14.sp,
+                    color = if (peersMap.isEmpty()) Color(0x8A97B1) else Color(0x5B8CFF),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+
+        Text(
+            "📸 How to use:",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFFFFF),
+            modifier = Modifier
+                .align(Alignment.Start)
+                .padding(top = 16.dp),
+        )
+
+        Text(
+            "1. Open any photo from your gallery\n2. Tap Share → Ether\n3. Flick the image upward\n4. Watch it drop on another device!",
+            fontSize = 12.sp,
+            color = Color(0x8A97B1),
+            modifier = Modifier
+                .align(Alignment.Start)
+                .padding(top = 8.dp),
+            lineHeight = 20.sp,
         )
     }
 }
