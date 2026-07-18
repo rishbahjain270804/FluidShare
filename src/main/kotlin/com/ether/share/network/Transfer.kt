@@ -180,14 +180,20 @@ class EtherSender {
 // Image magic-number detection
 fun imageSignatureMatches(head: ByteArray, declaredMime: String): Boolean {
     if (head.size < 3) return false
-    val sigs = listOf(
-        Triple(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()), "image/jpeg", 0),
-        Triple(byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte()), "image/png", 0),
-        Triple(byteArrayOf(0x47.toByte(), 0x49.toByte(), 0x46.toByte(), 0x38.toByte()), "image/gif", 0),
-    )
-    return sigs.any { (magic, expectedMime, offset) ->
-        if (offset + magic.size > head.size) return@any false
-        head.sliceArray(offset until offset + magic.size).contentEquals(magic) &&
-            declaredMime.lowercase().contains("image")
+
+    // Check if declared mime is an image type
+    val isImageType = declaredMime.lowercase().contains("image")
+    if (!isImageType) return false
+
+    // Check magic numbers - match any known image format
+    val hasValidSignature = when {
+        head.size >= 3 && head[0] == 0xFF.toByte() && head[1] == 0xD8.toByte() -> true // JPEG
+        head.size >= 4 && head[0] == 0x89.toByte() && head[1] == 0x50.toByte() -> true // PNG
+        head.size >= 4 && head[0] == 0x47.toByte() && head[1] == 0x49.toByte() -> true // GIF
+        head.size >= 12 && head.sliceArray(8..11).contentEquals("WEBP".toByteArray()) -> true // WebP
+        head.size >= 2 && head[0] == 0x42.toByte() && head[1] == 0x4D.toByte() -> true // BMP
+        else -> false
     }
+
+    return hasValidSignature
 }

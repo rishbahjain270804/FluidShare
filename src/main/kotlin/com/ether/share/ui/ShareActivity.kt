@@ -107,17 +107,19 @@ class ShareActivity : ComponentActivity() {
             }
         }
 
+        val detectedMime = imageUri?.let { contentResolver.getType(it) } ?: detectImageMime(imageBuffer)
+
         setContent {
             EtherTheme {
                 if (imageBuffer != null) {
                     FlickShareScreen(
                         imageBuffer = imageBuffer,
-                        imageMime = imageUri?.let { contentResolver.getType(it) } ?: "image/jpeg",
+                        imageMime = detectedMime,
                         imageName = imageUri?.lastPathSegment ?: "image",
                         peers = discovery.peers,
                         onThrow = { target, motion ->
                             lifecycleScope.launch {
-                                sender.send(target.host, target.port, imageBuffer, "image/jpeg", "flicked.jpg", motion)
+                                sender.send(target.host, target.port, imageBuffer, detectedMime, "flicked.jpg", motion)
                             }
                         },
                     )
@@ -148,6 +150,17 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun detectImageMime(buffer: ByteArray?): String {
+        if (buffer == null || buffer.size < 3) return "image/jpeg"
+        return when {
+            buffer.size >= 3 && buffer[0] == 0xFF.toByte() && buffer[1] == 0xD8.toByte() -> "image/jpeg"
+            buffer.size >= 4 && buffer[0] == 0x89.toByte() && buffer[1] == 0x50.toByte() -> "image/png"
+            buffer.size >= 4 && buffer[0] == 0x47.toByte() && buffer[1] == 0x49.toByte() -> "image/gif"
+            buffer.size >= 12 && buffer.sliceArray(8..11).contentEquals("WEBP".toByteArray()) -> "image/webp"
+            else -> "image/jpeg"
         }
     }
 
@@ -210,6 +223,7 @@ fun FlickShareScreen(
     var offsetY by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     var isFlinging by remember { mutableStateOf(false) }
+    var selectedPeer by remember { mutableStateOf<Peer?>(null) }
     val samples = remember { mutableListOf<PointerSample>() }
 
     Column(
@@ -259,12 +273,13 @@ fun FlickShareScreen(
                             offsetX += dragAmount.x
                             offsetY += dragAmount.y
 
-                            if (offsetY < -150 && peersMap.isNotEmpty()) {
+                            if (offsetY < -150 && selectedPeer != null) {
                                 val motion = estimateVelocity(samples)
                                 if (motion.velocity > 1.5f) {
                                     isFlinging = true
-                                    onThrow(peersMap.values.first(), motion)
+                                    selectedPeer?.let { onThrow(it, motion) }
                                     isDragging = false
+                                    selectedPeer = null
                                 }
                             }
                         },
@@ -296,7 +311,7 @@ fun FlickShareScreen(
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                 )
-            } else if (isDragging && offsetY < -100) {
+            } else if (selectedPeer != null && isDragging && offsetY < -100) {
                 Text(
                     "⬆️ Keep pulling to send!",
                     color = Color(0x5B8CFF),
@@ -306,7 +321,7 @@ fun FlickShareScreen(
             }
         }
 
-        // Peer list
+        // Peer selection
         if (peersMap.isNotEmpty()) {
             Surface(
                 modifier = Modifier
@@ -317,18 +332,32 @@ fun FlickShareScreen(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        "📱 Nearby Devices",
+                        "📱 Select Device to Send To",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0x8A97B1),
                     )
                     peersMap.forEach { (_, peer) ->
-                        Text(
-                            peer.instance,
-                            fontSize = 14.sp,
-                            color = Color(0xFFFFFF),
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .clickable { selectedPeer = peer }
+                                .background(
+                                    if (selectedPeer?.instance == peer.instance) Color(0x5B8CFF) else Color(0x0B0E14),
+                                    shape = RoundedCornerShape(8.dp)
+                                ),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selectedPeer?.instance == peer.instance) Color(0x5B8CFF) else Color(0x262D3D),
+                        ) {
+                            Text(
+                                "✓ ${peer.instance}",
+                                fontSize = 14.sp,
+                                color = Color(0xFFFFFF),
+                                modifier = Modifier.padding(12.dp),
+                                fontWeight = if (selectedPeer?.instance == peer.instance) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
                     }
                 }
             }
