@@ -277,32 +277,24 @@ fun FlickShareScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x0B0E14)),
-        verticalArrangement = Arrangement.SpaceBetween,
+            .background(Color(0x0B0E14))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(modifier = Modifier.weight(0.3f)) {
-            // Header
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                color = Color.Transparent,
-            ) {
-                Column {
-                    Text(
-                        "🎯 Flick to Share",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFFF),
-                    )
-                    Text(
-                        if (peersMap.isEmpty()) "🔍 Finding devices..." else "✓ ${peersMap.size} device${if (peersMap.size != 1) "s" else ""} nearby",
-                        fontSize = 12.sp,
-                        color = Color(0x8A97B1),
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-            }
+        // Header
+        Column {
+            Text(
+                "🎯 Flick to Share",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFFFF),
+            )
+            Text(
+                if (peersMap.isEmpty()) "🔍 Finding devices..." else "✓ ${peersMap.size} device${if (peersMap.size != 1) "s" else ""} nearby",
+                fontSize = 12.sp,
+                color = Color(0x8A97B1),
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
 
         // Main content
@@ -375,10 +367,7 @@ fun FlickShareScreen(
         // Peer selection
         if (peersMap.isNotEmpty()) {
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .weight(0.4f),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0x1F2937),
             ) {
@@ -409,8 +398,6 @@ fun FlickShareScreen(
                     }
                 }
             }
-        } else {
-            Spacer(modifier = Modifier.weight(0.4f))
         }
     }
 }
