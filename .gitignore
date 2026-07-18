@@ -1,11 +1,11 @@
 ﻿# Gradle
 .gradle/
-gradle/
-gradlew
-gradlew.bat
+gradle/lib/
+gradle/src/
 gradle-*.zip
 gradle-*.tar.gz
 build/
+!gradle/wrapper/
 *.apk
 
 # Build artifacts
