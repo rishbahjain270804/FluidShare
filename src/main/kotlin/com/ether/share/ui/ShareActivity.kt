@@ -63,23 +63,31 @@ class ShareActivity : ComponentActivity() {
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
+        android.util.Log.e("Ether", "imagePickerLauncher callback: uri=$uri")
         if (uri != null) {
+            android.util.Log.e("Ether", "URI is valid, loading image")
             selectedImageUri = uri
             loadImageFromUri(uri)
+            android.util.Log.e("Ether", "Image loaded, calling updateUI")
             updateUI()
+        } else {
+            android.util.Log.e("Ether", "URI is NULL - user cancelled")
         }
     }
 
     private fun pickImage() {
+        android.util.Log.e("Ether", "pickImage called - launching image picker")
         imagePickerLauncher.launch("image/*")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        android.util.Log.e("Ether", "===== ACTIVITY CREATED =====")
         requestPermissionsIfNeeded()
     }
 
     private fun requestPermissionsIfNeeded() {
+        android.util.Log.e("Ether", "requestPermissionsIfNeeded called")
         val permissions = mutableListOf(
             android.Manifest.permission.INTERNET,
             android.Manifest.permission.ACCESS_NETWORK_STATE,
@@ -96,20 +104,27 @@ class ShareActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
+        android.util.Log.e("Ether", "Missing permissions: ${missingPermissions.size}")
         if (missingPermissions.isNotEmpty()) {
+            android.util.Log.e("Ether", "Requesting permissions: $missingPermissions")
             permissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
+            android.util.Log.e("Ether", "All permissions already granted, initializing Ether")
             initializeEther()
         }
     }
 
     private fun initializeEther() {
+        android.util.Log.e("Ether", "===== INITIALIZING ETHER =====")
         // Initialize Ether components
         val instance = "${Build.MODEL}-${System.currentTimeMillis() % 10000}"
+        android.util.Log.e("Ether", "Instance name: $instance")
         receiver = EtherReceiver()
         receiver.start()
+        android.util.Log.e("Ether", "Receiver started on port ${receiver.actualPort}")
         discovery = EtherDiscovery(this, instance, receiver.actualPort)
         discovery.start()
+        android.util.Log.e("Ether", "Discovery started")
         sender = EtherSender()
 
         // Handle incoming share intent
@@ -177,9 +192,11 @@ class ShareActivity : ComponentActivity() {
     }
 
     private fun updateUI() {
+        android.util.Log.d("Ether", "updateUI called. imageBuffer size: ${imageBuffer?.size ?: "null"}")
         setContent {
             EtherTheme {
                 if (imageBuffer != null) {
+                    android.util.Log.d("Ether", "Rendering FlickShareScreen with image size: ${imageBuffer!!.size}")
                     FlickShareScreen(
                         imageBuffer = imageBuffer!!,
                         imageMime = imageMime,
@@ -268,7 +285,9 @@ fun FlickShareScreen(
     peers: StateFlow<Map<String, Peer>>,
     onThrow: (Peer, MotionVector) -> Unit,
 ) {
+    android.util.Log.e("Ether", "===== FLICK SCREEN START =====")
     val peersMap by peers.collectAsState()
+    android.util.Log.e("Ether", "peersMap size: ${peersMap.size}")
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
@@ -281,29 +300,28 @@ fun FlickShareScreen(
             .fillMaxSize()
             .background(Color(0x0B0E14))
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.Top,
     ) {
         // Header
-        Column {
-            Text(
-                "🎯 Flick to Share",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFFFFF),
-            )
-            Text(
-                if (peersMap.isEmpty()) "🔍 Finding devices..." else "✓ ${peersMap.size} device${if (peersMap.size != 1) "s" else ""} nearby",
-                fontSize = 12.sp,
-                color = Color(0x8A97B1),
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
+        Text(
+            "🎯 FLICK TO SHARE",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+        )
+        Text(
+            if (peersMap.isEmpty()) "🔍 Finding ${peersMap.size} devices..." else "✓ ${peersMap.size} devices found!",
+            fontSize = 14.sp,
+            color = Color.White,
+            modifier = Modifier.padding(top = 8.dp),
+        )
 
-        // Main content
+        // Image display
         Box(
             modifier = Modifier
-                .weight(1f)
                 .fillMaxWidth()
+                .height(300.dp)
+                .padding(vertical = 12.dp)
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = {
@@ -342,59 +360,55 @@ fun FlickShareScreen(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = imageName,
                     modifier = Modifier
-                        .size(280.dp)
+                        .size(200.dp)
                         .scale(scale)
                         .offset(x = (offsetX / 15).dp, y = (offsetY / 15).dp),
                     contentScale = ContentScale.Fit,
                 )
             }
-
-            if (peersMap.isEmpty()) {
-                Text(
-                    "🔍 Searching for devices...",
-                    color = Color(0x8A97B1),
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                )
-            } else if (selectedPeer != null && isDragging && offsetY < -100) {
-                Text(
-                    "⬆️ Keep pulling to send!",
-                    color = Color(0x5B8CFF),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
         }
 
-        // Peer selection
-        if (peersMap.isNotEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x1F2937),
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+        // Peer selection - EXTREME CONTRAST
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+                .background(Color.Red, shape = RoundedCornerShape(12.dp))
+                .padding(16.dp)
+        ) {
+            Column {
+                Text(
+                    ">>> SELECT DEVICE <<<",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                if (peersMap.isEmpty()) {
                     Text(
-                        "📱 Select Device to Send To",
-                        fontSize = 12.sp,
+                        "SEARCHING FOR DEVICES...",
+                        fontSize = 18.sp,
+                        color = Color.White,
+                        modifier = Modifier.padding(top = 16.dp),
                         fontWeight = FontWeight.Bold,
-                        color = Color(0x8A97B1),
                     )
+                } else {
                     peersMap.forEach { (_, peer) ->
-                        Surface(
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp)
-                                .clickable { selectedPeer = peer },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (selectedPeer?.instance == peer.instance) Color(0x5B8CFF) else Color(0x262D3D),
+                                .padding(top = 12.dp)
+                                .background(
+                                    if (selectedPeer?.instance == peer.instance) Color.Yellow else Color.White,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { selectedPeer = peer }
+                                .padding(12.dp)
                         ) {
                             Text(
-                                "✓ ${peer.instance}",
-                                fontSize = 14.sp,
-                                color = Color(0xFFFFFF),
-                                modifier = Modifier.padding(12.dp),
-                                fontWeight = if (selectedPeer?.instance == peer.instance) FontWeight.Bold else FontWeight.Normal,
+                                peer.instance,
+                                fontSize = 18.sp,
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }
@@ -406,7 +420,9 @@ fun FlickShareScreen(
 
 @Composable
 fun GalleryScreen(peers: StateFlow<Map<String, Peer>>, onPickImage: () -> Unit) {
+    android.util.Log.e("Ether", "===== GALLERY SCREEN RENDERING =====")
     val peersMap by peers.collectAsState()
+    android.util.Log.e("Ether", "GalleryScreen peers: ${peersMap.size}")
 
     Column(
         modifier = Modifier
@@ -453,22 +469,25 @@ fun GalleryScreen(peers: StateFlow<Map<String, Peer>>, onPickImage: () -> Unit) 
             }
         }
 
-        // Pick image button
-        Button(
-            onClick = onPickImage,
+        // HUGE Pick image button - IMPOSSIBLE TO MISS
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0x5B8CFF),
-            ),
-            shape = RoundedCornerShape(8.dp),
+                .height(120.dp)
+                .padding(vertical = 16.dp)
+                .background(Color.Red, shape = RoundedCornerShape(16.dp))
+                .clickable {
+                    android.util.Log.e("Ether", "PICK IMAGE BUTTON CLICKED!!!")
+                    onPickImage()
+                },
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                "📸 Pick Image to Share",
-                modifier = Modifier.padding(8.dp),
-                fontSize = 16.sp,
+                "TAP TO PICK IMAGE",
+                fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
             )
         }
 

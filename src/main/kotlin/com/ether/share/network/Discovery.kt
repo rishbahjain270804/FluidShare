@@ -42,72 +42,82 @@ class EtherDiscovery(private val context: Context, private val instance: String,
 
         registerListener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(nsdServiceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service registered: ${nsdServiceInfo.serviceName}")
+                Log.d(TAG, "✅ Service REGISTERED: ${nsdServiceInfo.serviceName} on port $tcpPort")
             }
 
             override fun onRegistrationFailed(nsdServiceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.e(TAG, "Registration failed: $errorCode")
+                Log.e(TAG, "❌ Registration FAILED: error code $errorCode")
             }
 
             override fun onServiceUnregistered(nsdServiceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service unregistered")
+                Log.d(TAG, "⏹️ Service unregistered")
             }
 
             override fun onUnregistrationFailed(nsdServiceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.e(TAG, "Unregistration failed: $errorCode")
+                Log.e(TAG, "❌ Unregistration FAILED: error code $errorCode")
             }
         }
 
+        Log.d(TAG, "📢 Advertising service: $instance on port $tcpPort")
         nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, registerListener!!)
     }
 
     private fun browse() {
         browseListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {
-                Log.d(TAG, "Discovery started for $serviceType")
+                Log.d(TAG, "✅ Discovery started for $serviceType")
             }
 
             override fun onServiceFound(nsdServiceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service found: ${nsdServiceInfo.serviceName}")
+                Log.d(TAG, "🔎 Service found: ${nsdServiceInfo.serviceName} (my instance: $instance)")
                 if (nsdServiceInfo.serviceName != instance) {
+                    Log.d(TAG, "   → Resolving ${nsdServiceInfo.serviceName}...")
                     nsd.resolveService(nsdServiceInfo, resolveListener())
+                } else {
+                    Log.d(TAG, "   → Ignoring self")
                 }
             }
 
             override fun onServiceLost(nsdServiceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service lost: ${nsdServiceInfo.serviceName}")
+                Log.d(TAG, "❌ Service lost: ${nsdServiceInfo.serviceName}")
                 _peers.value = _peers.value - nsdServiceInfo.serviceName
             }
 
             override fun onDiscoveryStopped(serviceType: String) {
-                Log.d(TAG, "Discovery stopped for $serviceType")
+                Log.d(TAG, "⏹️ Discovery stopped for $serviceType")
             }
 
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.e(TAG, "Discovery start failed for $serviceType: $errorCode")
+                Log.e(TAG, "❌ Discovery start FAILED for $serviceType: error code $errorCode")
             }
 
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.e(TAG, "Discovery stop failed for $serviceType: $errorCode")
+                Log.e(TAG, "❌ Discovery stop FAILED for $serviceType: error code $errorCode")
             }
         }
 
+        Log.d(TAG, "Starting NSD discovery for $SERVICE_TYPE")
         nsd.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, browseListener!!)
     }
 
     private fun resolveListener() = object : NsdManager.ResolveListener {
         override fun onResolveFailed(nsdServiceInfo: NsdServiceInfo, errorCode: Int) {
-            Log.e(TAG, "Resolve failed: $errorCode for ${nsdServiceInfo.serviceName}")
+            Log.e(TAG, "❌ Resolve FAILED: error code $errorCode for ${nsdServiceInfo.serviceName}")
         }
 
         override fun onServiceResolved(nsdServiceInfo: NsdServiceInfo) {
-            Log.d(TAG, "Service resolved: ${nsdServiceInfo.serviceName}")
-            val host = nsdServiceInfo.host?.hostAddress ?: return
-            _peers.value = _peers.value + (nsdServiceInfo.serviceName to Peer(
-                instance = nsdServiceInfo.serviceName,
-                host = host,
-                port = nsdServiceInfo.port,
-            ))
+            val host = nsdServiceInfo.host?.hostAddress ?: "unknown"
+            Log.d(TAG, "✅ Service RESOLVED: ${nsdServiceInfo.serviceName} @ $host:${nsdServiceInfo.port}")
+            if (nsdServiceInfo.host?.hostAddress != null) {
+                _peers.value = _peers.value + (nsdServiceInfo.serviceName to Peer(
+                    instance = nsdServiceInfo.serviceName,
+                    host = host,
+                    port = nsdServiceInfo.port,
+                ))
+                Log.d(TAG, "   → Added to peers. Total peers: ${_peers.value.size}")
+            } else {
+                Log.e(TAG, "   → ERROR: No host address!")
+            }
         }
     }
 

@@ -152,6 +152,10 @@ class EtherSender {
         motion: MotionVector,
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
+            Log.e("EtherSender", "Sending image: mime=$mime, size=${buffer.size}, name=$name")
+            val head = buffer.take(16).map { String.format("%02X", it) }.joinToString(" ")
+            Log.e("EtherSender", "Image header bytes: $head")
+
             Socket().use { sock ->
                 sock.connect(InetSocketAddress(host, port), 1500)
                 sock.tcpNoDelay = true
@@ -179,20 +183,46 @@ class EtherSender {
 
 // Image magic-number detection
 fun imageSignatureMatches(head: ByteArray, declaredMime: String): Boolean {
-    if (head.size < 3) return false
+    if (head.size < 3) {
+        Log.e("ImageVerify", "Head too small: ${head.size}")
+        return false
+    }
 
     // Check if declared mime is an image type
     val isImageType = declaredMime.lowercase().contains("image")
+    Log.e("ImageVerify", "MIME=$declaredMime, isImageType=$isImageType")
     if (!isImageType) return false
+
+    // Log first bytes for debugging
+    val headHex = head.take(16).map { String.format("%02X", it) }.joinToString(" ")
+    Log.e("ImageVerify", "Image bytes: $headHex")
 
     // Check magic numbers - match any known image format
     val hasValidSignature = when {
-        head.size >= 3 && head[0] == 0xFF.toByte() && head[1] == 0xD8.toByte() -> true // JPEG
-        head.size >= 4 && head[0] == 0x89.toByte() && head[1] == 0x50.toByte() -> true // PNG
-        head.size >= 4 && head[0] == 0x47.toByte() && head[1] == 0x49.toByte() -> true // GIF
-        head.size >= 12 && head.sliceArray(8..11).contentEquals("WEBP".toByteArray()) -> true // WebP
-        head.size >= 2 && head[0] == 0x42.toByte() && head[1] == 0x4D.toByte() -> true // BMP
-        else -> false
+        head.size >= 3 && head[0] == 0xFF.toByte() && head[1] == 0xD8.toByte() -> {
+            Log.e("ImageVerify", "✓ JPEG detected")
+            true
+        }
+        head.size >= 4 && head[0] == 0x89.toByte() && head[1] == 0x50.toByte() -> {
+            Log.e("ImageVerify", "✓ PNG detected")
+            true
+        }
+        head.size >= 4 && head[0] == 0x47.toByte() && head[1] == 0x49.toByte() -> {
+            Log.e("ImageVerify", "✓ GIF detected")
+            true
+        }
+        head.size >= 12 && head.sliceArray(8..11).contentEquals("WEBP".toByteArray()) -> {
+            Log.e("ImageVerify", "✓ WEBP detected")
+            true
+        }
+        head.size >= 2 && head[0] == 0x42.toByte() && head[1] == 0x4D.toByte() -> {
+            Log.e("ImageVerify", "✓ BMP detected")
+            true
+        }
+        else -> {
+            Log.e("ImageVerify", "❌ NO MATCH for bytes: ${head.take(4).map { String.format("%02X", it) }.joinToString(" ")}")
+            false
+        }
     }
 
     return hasValidSignature
