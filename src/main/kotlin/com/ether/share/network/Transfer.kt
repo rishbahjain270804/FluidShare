@@ -88,13 +88,13 @@ class EtherReceiver(val port: Int = 0) {
                                     val mime = header?.mime ?: return@forEach
                                     if (imageSignatureMatches(sniff, mime)) {
                                         caught = true
-                                        header?.let {
+                                        header?.let { h ->
                                             listeners.forEach {
                                                 it(Catch(CatchEvent(
-                                                    motion = it.motion,
-                                                    mime = it.mime,
-                                                    name = it.name,
-                                                    payloadLen = it.payloadLen,
+                                                    motion = h.motion,
+                                                    mime = h.mime,
+                                                    name = h.name,
+                                                    payloadLen = h.payloadLen,
                                                 )))
                                             }
                                         }
@@ -115,13 +115,13 @@ class EtherReceiver(val port: Int = 0) {
                                 } else {
                                     settled = true
                                     val buffer = buffers.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
-                                    header?.let {
+                                    header?.let { h ->
                                         listeners.forEach {
                                             it(Complete(CompleteEvent(
                                                 buffer = buffer,
-                                                mime = it.mime,
-                                                name = it.name,
-                                                motion = it.motion,
+                                                mime = h.mime,
+                                                name = h.name,
+                                                motion = h.motion,
                                             )))
                                         }
                                     }
@@ -182,8 +182,8 @@ fun imageSignatureMatches(head: ByteArray, declaredMime: String): Boolean {
     if (head.size < 3) return false
     val sigs = listOf(
         Triple(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()), "image/jpeg", 0),
-        Triple(byteArrayOf(0x89, 0x50, 0x4E, 0x47), "image/png", 0),
-        Triple(byteArrayOf(0x47, 0x49, 0x46, 0x38), "image/gif", 0),
+        Triple(byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte()), "image/png", 0),
+        Triple(byteArrayOf(0x47.toByte(), 0x49.toByte(), 0x46.toByte(), 0x38.toByte()), "image/gif", 0),
     )
     return sigs.any { (magic, expectedMime, offset) ->
         if (offset + magic.size > head.size) return@any false

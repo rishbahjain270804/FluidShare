@@ -1,10 +1,12 @@
 package com.ether.share.ui
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -15,15 +17,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import coil.compose.AsyncImage
 import com.ether.share.network.*
 import com.ether.share.protocol.MotionVector
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
@@ -174,14 +177,17 @@ fun FlickShareScreen(
         contentAlignment = Alignment.Center,
     ) {
         // Display image with drag transform
-        AsyncImage(
-            model = imageBuffer,
-            contentDescription = imageName,
-            modifier = Modifier
-                .size(300.dp)
-                .offset(x = (offsetX / 40).dp, y = (offsetY / 40).dp),
-            contentScale = ContentScale.Crop,
-        )
+        val bitmap = BitmapFactory.decodeByteArray(imageBuffer, 0, imageBuffer.size)
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = imageName,
+                modifier = Modifier
+                    .size(300.dp)
+                    .offset(x = (offsetX / 40).dp, y = (offsetY / 40).dp),
+                contentScale = ContentScale.Crop,
+            )
+        }
 
         if (peersMap.isEmpty()) {
             Text(

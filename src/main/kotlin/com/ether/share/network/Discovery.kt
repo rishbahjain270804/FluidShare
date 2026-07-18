@@ -36,8 +36,8 @@ class EtherDiscovery(private val context: Context, private val instance: String,
             serviceName = instance
             serviceType = SERVICE_TYPE
             port = tcpPort
-            attributes["v"] = "1"
-            attributes["role"] = "peer"
+            setAttribute("v", "1")
+            setAttribute("role", "peer")
         }
 
         registerListener = object : NsdManager.RegistrationListener {
