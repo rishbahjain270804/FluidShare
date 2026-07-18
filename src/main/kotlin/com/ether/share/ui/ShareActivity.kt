@@ -114,7 +114,10 @@ class ShareActivity : ComponentActivity() {
 
         // Handle incoming share intent
         val sharedImageUri = when (intent?.action) {
-            Intent.ACTION_SEND -> intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
             else -> null
         }
 
@@ -211,7 +214,7 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
-    private fun saveImageToMediaStore(buffer: ByteArray, name: String) {
+    private fun saveImageToMediaStore(buffer: ByteArray, @Suppress("UNUSED_PARAMETER") name: String) {
         try {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val filename = "Ether_$timestamp.jpg"
@@ -260,7 +263,7 @@ fun EtherTheme(content: @Composable () -> Unit) {
 @Composable
 fun FlickShareScreen(
     imageBuffer: ByteArray,
-    imageMime: String,
+    @Suppress("UNUSED_PARAMETER") imageMime: String,
     imageName: String,
     peers: StateFlow<Map<String, Peer>>,
     onThrow: (Peer, MotionVector) -> Unit,
@@ -271,7 +274,6 @@ fun FlickShareScreen(
     var isDragging by remember { mutableStateOf(false) }
     var isFlinging by remember { mutableStateOf(false) }
     var selectedPeer by remember { mutableStateOf<Peer?>(null) }
-    var transferStatus by remember { mutableStateOf<String?>(null) }
     val samples = remember { mutableListOf<PointerSample>() }
 
     Column(
@@ -501,6 +503,7 @@ fun estimateVelocity(samples: List<PointerSample>): MotionVector {
     val dt = maxOf(b.t - a.t, 1L).toFloat()
     val vx = (b.x - a.x) / dt
     val vy = (a.y - b.y) / dt
+    @Suppress("UNUSED_VARIABLE")
     val speed = kotlin.math.hypot(vx, vy).coerceIn(0f, 6f)
     val angle = kotlin.math.atan2(vx, kotlin.math.max(vy, 0.0001f))
     return MotionVector(vy, angle, b.x / 1080) // normalized by screen width
